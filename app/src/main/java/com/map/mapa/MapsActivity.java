@@ -8,6 +8,7 @@ import android.location.Geocoder;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.AsyncTask;
 import android.support.annotation.NonNull;
 import android.support.design.widget.NavigationView;
 import android.support.v4.app.ActivityCompat;
@@ -20,26 +21,42 @@ import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.squareup.okhttp.OkHttpClient;
+import com.squareup.okhttp.Request;
+import com.squareup.okhttp.Response;
+
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Vector;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, NavigationView.OnNavigationItemSelectedListener {
 
     private GoogleMap mMap;
+    private ArrayList<Vector< String>> myMarkers;
     LocationManager locationManager;
     double latitud, longitud;
-    LatLng latLng;
+    LatLng latLng, latLngBar;
     Marker mar;
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,6 +79,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
+
+        final TextView textView = findViewById(R.id.textView);
+
+
+
+
     }
 
 
@@ -77,11 +100,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
+        mar = null;
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},10);
 
         }
+        latLngBar = new LatLng(41.3818,2.1685);
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLngBar, 10.2f));
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -90,7 +116,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     public void onLocationChanged(Location location) {
                         latitud = location.getLatitude();
                         longitud = location.getLongitude();
-                        mMap.clear();
+                        if (mar != null) mar.remove();
                         latLng = new LatLng(latitud, longitud);
                         Geocoder geocoder = new Geocoder(getApplicationContext());
                         try {
@@ -99,8 +125,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             str += addressList.get(0).getFeatureName() + ",";
                             str += addressList.get(0).getLocality();
 
-                            mar = mMap.addMarker(new MarkerOptions().position(latLng).title(str));
-                            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 10.2f));
+                            mar = mMap.addMarker(new MarkerOptions().position(latLng).title(str).icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
+                          //  mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 10.2f));
 
                         } catch (IOException e) {
                             e.printStackTrace();
@@ -125,53 +151,87 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
             }
         }
-        /*else if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            Toast.makeText(getApplicationContext(),"Hola",Toast.LENGTH_LONG).show();
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, new LocationListener() {
-                @Override
-                public void onLocationChanged(Location location) {
-                    latitud = location.getLatitude();
-                    longitud = location.getLongitude();
-                     latLng = new LatLng(latitud,longitud);
-                    Geocoder geocoder = new Geocoder(getApplicationContext());
-                    try {
-                        List<Address> addressList = geocoder.getFromLocation(latitud,longitud,1);
-                        //String str = addressList.get(0).getLocality()+",";
-                        // str += addressList.get(0).getCountryName();
-                        String str = "mona";
-                        mMap.addMarker(new MarkerOptions().position(latLng).title(str));
-                        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng,10.2f));
+        AsyncTask asyncTask = new AsyncTask() {
+            @Override
+            protected Object doInBackground(Object[] objects) {
+                OkHttpClient client = new OkHttpClient();
+                Request request = new Request.Builder()
+                        .url("http://wservice.viabicing.cat/v2/stations")
+                        .build();
+                Response response = null;
 
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
+                try {
 
+                    response = client.newCall(request).execute();
 
+                    return response.body().string();
+
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
+                return null;
+            }
 
-                @Override
-                public void onStatusChanged(String provider, int status, Bundle extras) {
+            @Override
+            protected void onPostExecute(Object o) {
 
+                ArrayList<Vector< String>> markers = new ArrayList<>();
+                System.out.println((String) o);
+                JSONObject rootJSON = null;
+                try {
+                    rootJSON = (JSONObject) new JSONParser().parse((String) o);
+                } catch (ParseException e) {
+                    e.printStackTrace();
                 }
+                JSONArray stations = (JSONArray) rootJSON.get("stations");
+                Iterator<JSONObject> iterator = stations.iterator();
 
-                @Override
-                public void onProviderEnabled(String provider) {
 
+                int i = 0;
+
+                while (iterator.hasNext()) {
+
+                    JSONObject pinJSON = iterator.next();
+                    Vector<String> mark = new Vector<>();
+
+                    mark.add((String)pinJSON.get("id"));				// 0
+                    mark.add((String)pinJSON.get("type"));				// 1
+                    mark.add((String)pinJSON.get("latitude"));			// 2
+                    mark.add((String)pinJSON.get("longitude"));			// 3
+                    mark.add((String)pinJSON.get("streetName"));		// 4
+                    mark.add((String)pinJSON.get("streetNumber"));		// 5
+                    mark.add((String)pinJSON.get("altitude"));			// 6
+                    mark.add((String)pinJSON.get("slots"));				// 7
+                    mark.add((String)pinJSON.get("bikes"));				// 8
+                    mark.add((String)pinJSON.get("nearbyStations"));	// 9
+                    mark.add((String)pinJSON.get("status"));			// 10
+
+                    markers.add(mark);
+
+                    latitud = Double.parseDouble(mark.get(2));
+                    longitud = Double.parseDouble(mark.get(3));
+                    String titulo = mark.get(4);
+                    String snippet =
+                            "Puestos libres: "+
+                                    mark.get(7)+" /"+
+                                    "Bicicletas disponibles: "+
+                                    mark.get(8)+" /"+
+                                    "Estado: "+mark.get(10);
+
+                    mMap.addMarker(new MarkerOptions()
+                            .position(new LatLng(latitud,longitud))
+                            .title(titulo)
+                            .snippet(snippet));
+
+                    i++;
                 }
+                myMarkers = markers;
 
-                @Override
-                public void onProviderDisabled(String provider) {
-
-                }
-            });
-        }*/
-           /* LatLng my = new LatLng(latitud, longitud);
-            mMap.addMarker(new MarkerOptions().position(my).title("Marker in Sydney"));
-            mMap.moveCamera(CameraUpdateFactory.newLatLng(my));*/
-
-        // Add a marker in Sydney and move the camera
-
+            }
+        }.execute();
     }
+
+
     @Override
     public void onRequestPermissionsResult(int requestCode,
                                            String permissions[], int[] grantResults) {
