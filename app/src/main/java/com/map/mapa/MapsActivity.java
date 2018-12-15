@@ -80,11 +80,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mapFragment.getMapAsync(this);
 
 
-        final TextView textView = findViewById(R.id.textView);
-
-
-
-
     }
 
 
@@ -126,7 +121,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             str += addressList.get(0).getLocality();
 
                             mar = mMap.addMarker(new MarkerOptions().position(latLng).title(str).icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
-                          //  mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 10.2f));
 
                         } catch (IOException e) {
                             e.printStackTrace();
